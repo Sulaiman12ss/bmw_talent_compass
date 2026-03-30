@@ -1,24 +1,82 @@
-import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  integer,
+  pgEnum,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+export const roleEnum = pgEnum("role", ["user", "admin"]);
+export const levelEnum = pgEnum("level", [
+  "junior",
+  "mid",
+  "senior",
+  "lead",
+  "manager",
+  "director",
+  "executive",
+]);
+export const proficiencyEnum = pgEnum("proficiencyLevel", [
+  "beginner",
+  "intermediate",
+  "advanced",
+  "expert",
+]);
+export const trainingStatusEnum = pgEnum("trainingStatus", [
+  "planned",
+  "in_progress",
+  "completed",
+]);
+export const riskLevelEnum = pgEnum("riskLevel", [
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+export const alertTypeEnum = pgEnum("alertType", [
+  "talent_risk",
+  "succession_gap",
+  "compensation_trend",
+  "skill_gap",
+]);
+export const alertSeverityEnum = pgEnum("alertSeverity", [
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+export const fillStatusEnum = pgEnum("fillStatus", [
+  "open",
+  "filled",
+  "cancelled",
+]);
+export const retentionStatusEnum = pgEnum("retentionStatus", [
+  "active",
+  "departed",
+  "pending",
+]);
+export const hireSourceEnum = pgEnum("hireSource", ["internal", "external"]);
+
+// ─── Tables ───────────────────────────────────────────────────────────────────
 
 /**
  * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
  */
-export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
+  passwordHash: text("passwordHash"),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: roleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -28,38 +86,38 @@ export type InsertUser = typeof users.$inferInsert;
 /**
  * Employee table - Core employee information
  */
-export const employees = mysqlTable("employees", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const employees = pgTable("employees", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
   firstName: varchar("firstName", { length: 100 }).notNull(),
   lastName: varchar("lastName", { length: 100 }).notNull(),
   email: varchar("email", { length: 320 }).notNull().unique(),
   department: varchar("department", { length: 100 }).notNull(),
   position: varchar("position", { length: 100 }).notNull(),
-  level: mysqlEnum("level", ["junior", "mid", "senior", "lead", "manager", "director", "executive"]).notNull(),
-  yearsAtCompany: int("yearsAtCompany").notNull(),
-  yearsInRole: int("yearsInRole").notNull(),
-  managerId: int("managerId"),
+  level: levelEnum("level").notNull(),
+  yearsAtCompany: integer("yearsAtCompany").notNull(),
+  yearsInRole: integer("yearsInRole").notNull(),
+  managerId: integer("managerId"),
   biography: text("biography"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type Employee = typeof employees.$inferSelect;
 export type InsertEmployee = typeof employees.$inferInsert;
 
 /**
- * Performance ratings - Annual/periodic performance evaluations
+ * Performance ratings
  */
-export const performanceRatings = mysqlTable("performanceRatings", {
-  id: int("id").autoincrement().primaryKey(),
-  employeeId: int("employeeId").notNull(),
-  ratingYear: int("ratingYear").notNull(),
-  overallRating: varchar("overallRating", { length: 50 }).notNull(), // "exceeds", "meets", "below"
-  technicalScore: int("technicalScore").notNull(), // 1-5
-  leadershipScore: int("leadershipScore").notNull(), // 1-5
-  collaborationScore: int("collaborationScore").notNull(), // 1-5
-  innovationScore: int("innovationScore").notNull(), // 1-5
+export const performanceRatings = pgTable("performanceRatings", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employeeId").notNull(),
+  ratingYear: integer("ratingYear").notNull(),
+  overallRating: varchar("overallRating", { length: 50 }).notNull(),
+  technicalScore: integer("technicalScore").notNull(),
+  leadershipScore: integer("leadershipScore").notNull(),
+  collaborationScore: integer("collaborationScore").notNull(),
+  innovationScore: integer("innovationScore").notNull(),
   comments: text("comments"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -68,34 +126,34 @@ export type PerformanceRating = typeof performanceRatings.$inferSelect;
 export type InsertPerformanceRating = typeof performanceRatings.$inferInsert;
 
 /**
- * Skills - Employee skills and proficiency levels
+ * Skills
  */
-export const skills = mysqlTable("skills", {
-  id: int("id").autoincrement().primaryKey(),
-  employeeId: int("employeeId").notNull(),
+export const skills = pgTable("skills", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employeeId").notNull(),
   skillName: varchar("skillName", { length: 100 }).notNull(),
-  category: varchar("category", { length: 50 }).notNull(), // "technical", "leadership", "domain"
-  proficiencyLevel: mysqlEnum("proficiencyLevel", ["beginner", "intermediate", "advanced", "expert"]).notNull(),
-  yearsOfExperience: int("yearsOfExperience").notNull(),
-  endorsements: int("endorsements").default(0),
+  category: varchar("category", { length: 50 }).notNull(),
+  proficiencyLevel: proficiencyEnum("proficiencyLevel").notNull(),
+  yearsOfExperience: integer("yearsOfExperience").notNull(),
+  endorsements: integer("endorsements").default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type Skill = typeof skills.$inferSelect;
 export type InsertSkill = typeof skills.$inferInsert;
 
 /**
- * Training records - Completed and planned training
+ * Training records
  */
-export const trainingRecords = mysqlTable("trainingRecords", {
-  id: int("id").autoincrement().primaryKey(),
-  employeeId: int("employeeId").notNull(),
+export const trainingRecords = pgTable("trainingRecords", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employeeId").notNull(),
   trainingName: varchar("trainingName", { length: 200 }).notNull(),
-  category: varchar("category", { length: 100 }).notNull(), // "EV", "AI", "Leadership", etc.
-  status: mysqlEnum("status", ["planned", "in_progress", "completed"]).notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  status: trainingStatusEnum("status").notNull(),
   completionDate: timestamp("completionDate"),
-  hoursSpent: int("hoursSpent"),
+  hoursSpent: integer("hoursSpent"),
   certificateUrl: varchar("certificateUrl", { length: 500 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -104,18 +162,18 @@ export type TrainingRecord = typeof trainingRecords.$inferSelect;
 export type InsertTrainingRecord = typeof trainingRecords.$inferInsert;
 
 /**
- * Compensation data - Salary and benefits information
+ * Compensation data
  */
-export const compensationData = mysqlTable("compensationData", {
-  id: int("id").autoincrement().primaryKey(),
-  employeeId: int("employeeId").notNull(),
-  year: int("year").notNull(),
-  baseSalary: int("baseSalary").notNull(),
-  bonus: int("bonus").default(0),
-  stockOptions: int("stockOptions").default(0),
-  benefits: text("benefits"), // JSON string
-  marketBenchmark: int("marketBenchmark"),
-  percentileRank: int("percentileRank"), // 0-100
+export const compensationData = pgTable("compensationData", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employeeId").notNull(),
+  year: integer("year").notNull(),
+  baseSalary: integer("baseSalary").notNull(),
+  bonus: integer("bonus").default(0),
+  stockOptions: integer("stockOptions").default(0),
+  benefits: text("benefits"),
+  marketBenchmark: integer("marketBenchmark"),
+  percentileRank: integer("percentileRank"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -123,118 +181,118 @@ export type CompensationData = typeof compensationData.$inferSelect;
 export type InsertCompensationData = typeof compensationData.$inferInsert;
 
 /**
- * Talent assessments - AI-generated talent scores and insights
+ * Talent assessments
  */
-export const talentAssessments = mysqlTable("talentAssessments", {
-  id: int("id").autoincrement().primaryKey(),
-  employeeId: int("employeeId").notNull(),
-  talentScore: int("talentScore").notNull(), // 0-100
-  potentialScore: int("potentialScore").notNull(), // 0-100
-  hiddenTalentFlags: text("hiddenTalentFlags"), // JSON array
-  recommendedSkills: text("recommendedSkills"), // JSON array
-  recommendedRoles: text("recommendedRoles"), // JSON array
+export const talentAssessments = pgTable("talentAssessments", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employeeId").notNull(),
+  talentScore: integer("talentScore").notNull(),
+  potentialScore: integer("potentialScore").notNull(),
+  hiddenTalentFlags: text("hiddenTalentFlags"),
+  recommendedSkills: text("recommendedSkills"),
+  recommendedRoles: text("recommendedRoles"),
   assessmentSummary: text("assessmentSummary"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type TalentAssessment = typeof talentAssessments.$inferSelect;
 export type InsertTalentAssessment = typeof talentAssessments.$inferInsert;
 
 /**
- * Succession plans - Leadership succession planning data
+ * Succession plans
  */
-export const successionPlans = mysqlTable("successionPlans", {
-  id: int("id").autoincrement().primaryKey(),
+export const successionPlans = pgTable("successionPlans", {
+  id: serial("id").primaryKey(),
   criticalRoleId: varchar("criticalRoleId", { length: 100 }).notNull(),
   roleName: varchar("roleName", { length: 100 }).notNull(),
-  currentHolderId: int("currentHolderId"),
-  primarySuccessor: int("primarySuccessor"),
-  backupSuccessor: int("backupSuccessor"),
-  readinessScore: int("readinessScore"), // 0-100
-  riskLevel: mysqlEnum("riskLevel", ["low", "medium", "high", "critical"]).notNull(),
+  currentHolderId: integer("currentHolderId"),
+  primarySuccessor: integer("primarySuccessor"),
+  backupSuccessor: integer("backupSuccessor"),
+  readinessScore: integer("readinessScore"),
+  riskLevel: riskLevelEnum("riskLevel").notNull(),
   developmentPlan: text("developmentPlan"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type SuccessionPlan = typeof successionPlans.$inferSelect;
 export type InsertSuccessionPlan = typeof successionPlans.$inferInsert;
 
 /**
- * Alerts - System alerts for HR leadership
+ * Alerts
  */
-export const alerts = mysqlTable("alerts", {
-  id: int("id").autoincrement().primaryKey(),
-  type: mysqlEnum("type", ["talent_risk", "succession_gap", "compensation_trend", "skill_gap"]).notNull(),
-  severity: mysqlEnum("severity", ["low", "medium", "high", "critical"]).notNull(),
+export const alerts = pgTable("alerts", {
+  id: serial("id").primaryKey(),
+  type: alertTypeEnum("type").notNull(),
+  severity: alertSeverityEnum("severity").notNull(),
   title: varchar("title", { length: 200 }).notNull(),
   description: text("description").notNull(),
-  relatedEmployeeIds: text("relatedEmployeeIds"), // JSON array
+  relatedEmployeeIds: text("relatedEmployeeIds"),
   relatedRoleId: varchar("relatedRoleId", { length: 100 }),
   isRead: boolean("isRead").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type Alert = typeof alerts.$inferSelect;
 export type InsertAlert = typeof alerts.$inferInsert;
+
 /**
- * Job requirements - Job descriptions and requirements for decision analysis
+ * Job requirements
  */
-export const jobRequirements = mysqlTable("jobRequirements", {
-  id: int("id").autoincrement().primaryKey(),
+export const jobRequirements = pgTable("jobRequirements", {
+  id: serial("id").primaryKey(),
   jobTitle: varchar("jobTitle", { length: 200 }).notNull(),
   department: varchar("department", { length: 100 }).notNull(),
   description: text("description").notNull(),
   requiredSkills: text("requiredSkills").notNull(),
   preferredSkills: text("preferredSkills"),
-  experienceYearsRequired: int("experienceYearsRequired").notNull(),
+  experienceYearsRequired: integer("experienceYearsRequired").notNull(),
   seniority: varchar("seniority", { length: 50 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type JobRequirement = typeof jobRequirements.$inferSelect;
 export type InsertJobRequirement = typeof jobRequirements.$inferInsert;
 
 /**
- * Candidates - Candidate profiles for decision analysis
+ * Candidates
  */
-export const candidates = mysqlTable("candidates", {
-  id: int("id").autoincrement().primaryKey(),
+export const candidates = pgTable("candidates", {
+  id: serial("id").primaryKey(),
   firstName: varchar("firstName", { length: 100 }).notNull(),
   lastName: varchar("lastName", { length: 100 }).notNull(),
   email: varchar("email", { length: 320 }).notNull(),
-  yearsOfExperience: int("yearsOfExperience").notNull(),
+  yearsOfExperience: integer("yearsOfExperience").notNull(),
   currentRole: varchar("currentRole", { length: 100 }).notNull(),
   currentCompany: varchar("currentCompany", { length: 100 }).notNull(),
   skills: text("skills").notNull(),
   leadershipStyle: varchar("leadershipStyle", { length: 100 }),
-  teamSize: int("teamSize"),
+  teamSize: integer("teamSize"),
   achievements: text("achievements"),
-  // Automotive-executive enrichment fields (Fix 6)
-  education: text("education"), // JSON: [{degree, institution, year}]
+  education: text("education"),
   boardExposure: boolean("boardExposure").default(false),
-  crossFunctionalExperience: text("crossFunctionalExperience"), // JSON array of functions
-  geographicMobility: text("geographicMobility"), // JSON array of regions worked in
-  industryTransitions: text("industryTransitions"), // JSON array: [{from, to, year}]
+  crossFunctionalExperience: text("crossFunctionalExperience"),
+  geographicMobility: text("geographicMobility"),
+  industryTransitions: text("industryTransitions"),
   plantScaleExperience: boolean("plantScaleExperience").default(false),
   evProgramCredential: boolean("evProgramCredential").default(false),
-  notableProjects: text("notableProjects"), // JSON array of project descriptions
-  previousCompanies: text("previousCompanies"), // JSON array: [{company, role, years}]
+  notableProjects: text("notableProjects"),
+  previousCompanies: text("previousCompanies"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type Candidate = typeof candidates.$inferSelect;
 export type InsertCandidate = typeof candidates.$inferInsert;
 
 /**
- * Scenarios - Decision scenarios for multi-agent analysis
+ * Scenarios
  */
-export const scenarios = mysqlTable("scenarios", {
-  id: int("id").autoincrement().primaryKey(),
+export const scenarios = pgTable("scenarios", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description").notNull(),
   context: varchar("context", { length: 100 }).notNull(),
@@ -246,11 +304,11 @@ export type Scenario = typeof scenarios.$inferSelect;
 export type InsertScenario = typeof scenarios.$inferInsert;
 
 /**
- * JD Agent Output - Job description analysis results
+ * JD Agent Output
  */
-export const jdAgentOutputs = mysqlTable("jdAgentOutputs", {
-  id: int("id").autoincrement().primaryKey(),
-  jobRequirementId: int("jobRequirementId").notNull(),
+export const jdAgentOutputs = pgTable("jdAgentOutputs", {
+  id: serial("id").primaryKey(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
   coreCompetencies: text("coreCompetencies").notNull(),
   priorityWeights: text("priorityWeights").notNull(),
   reasoning: text("reasoning").notNull(),
@@ -261,15 +319,15 @@ export type JDAgentOutput = typeof jdAgentOutputs.$inferSelect;
 export type InsertJDAgentOutput = typeof jdAgentOutputs.$inferInsert;
 
 /**
- * CV Agent Output - Candidate scoring and ranking results
+ * CV Agent Output
  */
-export const cvAgentOutputs = mysqlTable("cvAgentOutputs", {
-  id: int("id").autoincrement().primaryKey(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  candidateId: int("candidateId").notNull(),
-  fitScore: int("fitScore").notNull(),
+export const cvAgentOutputs = pgTable("cvAgentOutputs", {
+  id: serial("id").primaryKey(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  candidateId: integer("candidateId").notNull(),
+  fitScore: integer("fitScore").notNull(),
   skillMatches: text("skillMatches").notNull(),
-  experienceMatch: int("experienceMatch").notNull(),
+  experienceMatch: integer("experienceMatch").notNull(),
   reasoning: text("reasoning").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -278,14 +336,14 @@ export type CVAgentOutput = typeof cvAgentOutputs.$inferSelect;
 export type InsertCVAgentOutput = typeof cvAgentOutputs.$inferInsert;
 
 /**
- * Scenario Agent Output - Scenario-based ranking adjustments
+ * Scenario Agent Output
  */
-export const scenarioAgentOutputs = mysqlTable("scenarioAgentOutputs", {
-  id: int("id").autoincrement().primaryKey(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  scenarioId: int("scenarioId").notNull(),
-  candidateId: int("candidateId").notNull(),
-  adjustedFitScore: int("adjustedFitScore").notNull(),
+export const scenarioAgentOutputs = pgTable("scenarioAgentOutputs", {
+  id: serial("id").primaryKey(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  scenarioId: integer("scenarioId").notNull(),
+  candidateId: integer("candidateId").notNull(),
+  adjustedFitScore: integer("adjustedFitScore").notNull(),
   priorityAdjustments: text("priorityAdjustments").notNull(),
   reasoning: text("reasoning").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -295,15 +353,15 @@ export type ScenarioAgentOutput = typeof scenarioAgentOutputs.$inferSelect;
 export type InsertScenarioAgentOutput = typeof scenarioAgentOutputs.$inferInsert;
 
 /**
- * Leadership Agent Output - Leadership assessment and team dynamics
+ * Leadership Agent Output
  */
-export const leadershipAgentOutputs = mysqlTable("leadershipAgentOutputs", {
-  id: int("id").autoincrement().primaryKey(),
-  candidateId: int("candidateId").notNull(),
+export const leadershipAgentOutputs = pgTable("leadershipAgentOutputs", {
+  id: serial("id").primaryKey(),
+  candidateId: integer("candidateId").notNull(),
   leadershipStyle: varchar("leadershipStyle", { length: 100 }).notNull(),
-  leadershipScore: int("leadershipScore").notNull(),
-  teamDynamicsScore: int("teamDynamicsScore").notNull(),
-  culturalFitScore: int("culturalFitScore").notNull(),
+  leadershipScore: integer("leadershipScore").notNull(),
+  teamDynamicsScore: integer("teamDynamicsScore").notNull(),
+  culturalFitScore: integer("culturalFitScore").notNull(),
   leadershipTraits: text("leadershipTraits").notNull(),
   teamPairingAnalysis: text("teamPairingAnalysis"),
   reasoning: text("reasoning").notNull(),
@@ -314,14 +372,14 @@ export type LeadershipAgentOutput = typeof leadershipAgentOutputs.$inferSelect;
 export type InsertLeadershipAgentOutput = typeof leadershipAgentOutputs.$inferInsert;
 
 /**
- * Decision Agent Output - Final recommendation synthesis
+ * Decision Agent Output
  */
-export const decisionAgentOutputs = mysqlTable("decisionAgentOutputs", {
-  id: int("id").autoincrement().primaryKey(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  scenarioId: int("scenarioId"),
-  recommendedCandidateId: int("recommendedCandidateId").notNull(),
-  confidenceScore: int("confidenceScore").notNull(),
+export const decisionAgentOutputs = pgTable("decisionAgentOutputs", {
+  id: serial("id").primaryKey(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  scenarioId: integer("scenarioId"),
+  recommendedCandidateId: integer("recommendedCandidateId").notNull(),
+  confidenceScore: integer("confidenceScore").notNull(),
   recommendation: text("recommendation").notNull(),
   tradeOffs: text("tradeOffs").notNull(),
   alternativeCandidates: text("alternativeCandidates").notNull(),
@@ -332,20 +390,18 @@ export const decisionAgentOutputs = mysqlTable("decisionAgentOutputs", {
 export type DecisionAgentOutput = typeof decisionAgentOutputs.$inferSelect;
 export type InsertDecisionAgentOutput = typeof decisionAgentOutputs.$inferInsert;
 
-
 /**
- * KPI 1: Time-to-Fill (Leadership Roles)
- * Tracks hiring process duration and efficiency
+ * KPI 1: Time-to-Fill
  */
-export const timeToFillMetrics = mysqlTable("timeToFillMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  jobRequirementId: int("jobRequirementId").notNull(),
+export const timeToFillMetrics = pgTable("timeToFillMetrics", {
+  id: serial("id").primaryKey(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
   requisitionOpenDate: timestamp("requisitionOpenDate").notNull(),
   offerAcceptanceDate: timestamp("offerAcceptanceDate"),
-  daysToFill: int("daysToFill"),
+  daysToFill: integer("daysToFill"),
   sourcingChannel: varchar("sourcingChannel", { length: 100 }),
-  targetDaysToFill: int("targetDaysToFill").notNull(),
-  status: mysqlEnum("status", ["open", "filled", "cancelled"]).default("open"),
+  targetDaysToFill: integer("targetDaysToFill").notNull(),
+  status: fillStatusEnum("status").default("open"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -354,21 +410,20 @@ export type InsertTimeToFillMetric = typeof timeToFillMetrics.$inferInsert;
 
 /**
  * KPI 2: Quality of Hire
- * Composite score of new hire performance and retention
  */
-export const qualityOfHireMetrics = mysqlTable("qualityOfHireMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  candidateId: int("candidateId").notNull(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  performanceRating12M: int("performanceRating12M"),
-  performanceRating24M: int("performanceRating24M"),
-  goalAchievementRate: int("goalAchievementRate"),
-  retentionStatus: mysqlEnum("retentionStatus", ["active", "departed", "pending"]).default("pending"),
-  managerSatisfaction: int("managerSatisfaction"),
-  projectDeliveryScore: int("projectDeliveryScore"),
-  qualityScore: int("qualityScore"),
+export const qualityOfHireMetrics = pgTable("qualityOfHireMetrics", {
+  id: serial("id").primaryKey(),
+  candidateId: integer("candidateId").notNull(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  performanceRating12M: integer("performanceRating12M"),
+  performanceRating24M: integer("performanceRating24M"),
+  goalAchievementRate: integer("goalAchievementRate"),
+  retentionStatus: retentionStatusEnum("retentionStatus").default("pending"),
+  managerSatisfaction: integer("managerSatisfaction"),
+  projectDeliveryScore: integer("projectDeliveryScore"),
+  qualityScore: integer("qualityScore"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type QualityOfHireMetric = typeof qualityOfHireMetrics.$inferSelect;
@@ -376,16 +431,15 @@ export type InsertQualityOfHireMetric = typeof qualityOfHireMetrics.$inferInsert
 
 /**
  * KPI 3: Internal vs. External Hire Ratio
- * Tracks internal mobility and external hiring patterns
  */
-export const internalExternalRatioMetrics = mysqlTable("internalExternalRatioMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  candidateId: int("candidateId").notNull(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  hireSource: mysqlEnum("hireSource", ["internal", "external"]).notNull(),
+export const internalExternalRatioMetrics = pgTable("internalExternalRatioMetrics", {
+  id: serial("id").primaryKey(),
+  candidateId: integer("candidateId").notNull(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  hireSource: hireSourceEnum("hireSource").notNull(),
   internalMobilityLevel: varchar("internalMobilityLevel", { length: 50 }),
   successionPlanCoverage: boolean("successionPlanCoverage").default(false),
-  benchStrengthRating: int("benchStrengthRating"),
+  benchStrengthRating: integer("benchStrengthRating"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -394,17 +448,16 @@ export type InsertInternalExternalRatioMetric = typeof internalExternalRatioMetr
 
 /**
  * KPI 4: Leadership Combination Compatibility
- * Assesses how well leader pairs work together
  */
-export const leadershipCompatibilityMetrics = mysqlTable("leadershipCompatibilityMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  candidateId1: int("candidateId1").notNull(),
-  candidateId2: int("candidateId2").notNull(),
-  compatibilityScore: int("compatibilityScore").notNull(),
-  leadershipStyleMatch: int("leadershipStyleMatch"),
+export const leadershipCompatibilityMetrics = pgTable("leadershipCompatibilityMetrics", {
+  id: serial("id").primaryKey(),
+  candidateId1: integer("candidateId1").notNull(),
+  candidateId2: integer("candidateId2").notNull(),
+  compatibilityScore: integer("compatibilityScore").notNull(),
+  leadershipStyleMatch: integer("leadershipStyleMatch"),
   collaborationHistory: text("collaborationHistory"),
   conflictResolutionPattern: varchar("conflictResolutionPattern", { length: 100 }),
-  teamEngagementImpact: int("teamEngagementImpact"),
+  teamEngagementImpact: integer("teamEngagementImpact"),
   plantKPIImpact: text("plantKPIImpact"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -414,18 +467,17 @@ export type InsertLeadershipCompatibilityMetric = typeof leadershipCompatibility
 
 /**
  * KPI 5: Scenario-Adjusted Candidate Ranking
- * Tracks how rankings shift with business context changes
  */
-export const scenarioRankingMetrics = mysqlTable("scenarioRankingMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  scenarioId: int("scenarioId").notNull(),
-  candidateId: int("candidateId").notNull(),
-  baselineRank: int("baselineRank"),
-  scenarioAdjustedRank: int("scenarioAdjustedRank"),
-  rankingShift: int("rankingShift"),
+export const scenarioRankingMetrics = pgTable("scenarioRankingMetrics", {
+  id: serial("id").primaryKey(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  scenarioId: integer("scenarioId").notNull(),
+  candidateId: integer("candidateId").notNull(),
+  baselineRank: integer("baselineRank"),
+  scenarioAdjustedRank: integer("scenarioAdjustedRank"),
+  rankingShift: integer("rankingShift"),
   priorityReweighting: text("priorityReweighting"),
-  strategicAlignment: int("strategicAlignment"),
+  strategicAlignment: integer("strategicAlignment"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -434,19 +486,18 @@ export type InsertScenarioRankingMetric = typeof scenarioRankingMetrics.$inferIn
 
 /**
  * KPI 6: Cost of Mis-Hire
- * Tracks total cost when a leadership hire fails
  */
-export const misHireCostMetrics = mysqlTable("misHireCostMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  candidateId: int("candidateId").notNull(),
-  jobRequirementId: int("jobRequirementId").notNull(),
-  separationCost: int("separationCost"),
-  reRecruitmentCost: int("reRecruitmentCost"),
-  interimLeadershipCost: int("interimLeadershipCost"),
-  projectDelayCost: int("projectDelayCost"),
-  teamTurnoverCost: int("teamTurnoverCost"),
-  totalMisHireCost: int("totalMisHireCost"),
-  misHireRiskScore: int("misHireRiskScore"),
+export const misHireCostMetrics = pgTable("misHireCostMetrics", {
+  id: serial("id").primaryKey(),
+  candidateId: integer("candidateId").notNull(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
+  separationCost: integer("separationCost"),
+  reRecruitmentCost: integer("reRecruitmentCost"),
+  interimLeadershipCost: integer("interimLeadershipCost"),
+  projectDelayCost: integer("projectDelayCost"),
+  teamTurnoverCost: integer("teamTurnoverCost"),
+  totalMisHireCost: integer("totalMisHireCost"),
+  misHireRiskScore: integer("misHireRiskScore"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -455,39 +506,37 @@ export type InsertMisHireCostMetric = typeof misHireCostMetrics.$inferInsert;
 
 /**
  * KPI 7: Skill Gap Index
- * Tracks gap between current and future-required competencies
  */
-export const skillGapMetrics = mysqlTable("skillGapMetrics", {
-  id: int("id").autoincrement().primaryKey(),
-  candidateId: int("candidateId").notNull(),
-  jobRequirementId: int("jobRequirementId").notNull(),
+export const skillGapMetrics = pgTable("skillGapMetrics", {
+  id: serial("id").primaryKey(),
+  candidateId: integer("candidateId").notNull(),
+  jobRequirementId: integer("jobRequirementId").notNull(),
   currentSkills: text("currentSkills").notNull(),
   requiredSkills: text("requiredSkills").notNull(),
-  skillGapIndex: int("skillGapIndex").notNull(),
+  skillGapIndex: integer("skillGapIndex").notNull(),
   criticalSkillGaps: text("criticalSkillGaps"),
-  developmentPotential: int("developmentPotential"),
+  developmentPotential: integer("developmentPotential"),
   trainingRequirements: text("trainingRequirements"),
   emergingSkillDemand: text("emergingSkillDemand"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type SkillGapMetric = typeof skillGapMetrics.$inferSelect;
 export type InsertSkillGapMetric = typeof skillGapMetrics.$inferInsert;
 
 /**
- * BMW Leadership Team - Current BMW leaders that candidates would work alongside
- * Grounds leadership compatibility in real pairings instead of floating scores
+ * BMW Leadership Team
  */
-export const bmwLeadershipTeam = mysqlTable("bmwLeadershipTeam", {
-  id: int("id").autoincrement().primaryKey(),
+export const bmwLeadershipTeam = pgTable("bmwLeadershipTeam", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 200 }).notNull(),
   role: varchar("role", { length: 200 }).notNull(),
   department: varchar("department", { length: 100 }).notNull(),
   leadershipStyle: varchar("leadershipStyle", { length: 100 }).notNull(),
-  teamSize: int("teamSize").notNull(),
-  priorities: text("priorities").notNull(), // JSON array of current priorities
-  background: text("background").notNull(), // Brief professional background
+  teamSize: integer("teamSize").notNull(),
+  priorities: text("priorities").notNull(),
+  background: text("background").notNull(),
   decisionMakingStyle: varchar("decisionMakingStyle", { length: 100 }).notNull(),
   communicationPreference: varchar("communicationPreference", { length: 100 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

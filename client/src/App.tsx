@@ -7,10 +7,12 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import DecisionFlow from "./pages/DecisionFlow";
 import AdminManagement from "./pages/AdminManagement";
 import ScenarioComparison from "./pages/ScenarioComparison";
+import Login from "./pages/Login";
 
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={Login} />
       <Route path={"/"} component={DecisionFlow} />
       <Route path="/admin" component={AdminManagement} />
       <Route path="/decision" component={DecisionFlow} />
@@ -20,16 +22,10 @@ function Router() {
   );
 }
 
-// Decision Intelligence - Focused Hackathon Submission
-// Single-page application focused on multi-agent hiring decisions
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router />

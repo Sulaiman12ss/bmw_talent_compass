@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import {
   InsertUser,
   users,
@@ -12,15 +13,15 @@ import {
   successionPlans,
   alerts,
 } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
+export function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const client = postgres(process.env.DATABASE_URL, { ssl: "require" });
+      _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -29,59 +30,44 @@ export async function getDb() {
   return _db;
 }
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
-  const db = await getDb();
+export async function upsertUser(user: Partial<InsertUser> & { openId: string }): Promise<void> {
+  const db = getDb();
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
     return;
   }
 
   try {
+    const isAdmin = user.email === ENV.adminEmail && Boolean(ENV.adminEmail);
     const values: InsertUser = {
       openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
+      name: user.name ?? null,
+      email: user.email ?? null,
+      passwordHash: user.passwordHash ?? null,
+      loginMethod: user.loginMethod ?? null,
+      role: isAdmin ? "admin" : (user.role ?? "user"),
+      lastSignedIn: user.lastSignedIn ?? new Date(),
     };
 
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
+    const updateSet: Partial<InsertUser> = {};
+    if (user.name !== undefined) updateSet.name = user.name ?? null;
+    if (user.email !== undefined) updateSet.email = user.email ?? null;
+    if (user.passwordHash !== undefined) updateSet.passwordHash = user.passwordHash ?? null;
+    if (user.loginMethod !== undefined) updateSet.loginMethod = user.loginMethod ?? null;
+    if (user.lastSignedIn !== undefined) updateSet.lastSignedIn = user.lastSignedIn;
+    if (user.role !== undefined || isAdmin) updateSet.role = isAdmin ? "admin" : (user.role ?? "user");
 
     if (Object.keys(updateSet).length === 0) {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await db
+      .insert(users)
+      .values(values)
+      .onConflictDoUpdate({
+        target: users.openId,
+        set: updateSet,
+      });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
@@ -89,13 +75,27 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 }
 
 export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
-  }
+  const db = getDb();
+  if (!db) return undefined;
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.openId, openId))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserByEmail(email: string) {
+  const db = getDb();
+  if (!db) return undefined;
+
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
 
   return result.length > 0 ? result[0] : undefined;
 }
@@ -104,61 +104,82 @@ export async function getUserByOpenId(openId: string) {
  * Employee queries
  */
 export async function getEmployeeById(employeeId: number) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return undefined;
-  const result = await db.select().from(employees).where(eq(employees.id, employeeId)).limit(1);
+  const result = await db
+    .select()
+    .from(employees)
+    .where(eq(employees.id, employeeId))
+    .limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
 export async function getAllEmployees() {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
   return await db.select().from(employees);
 }
 
 export async function getEmployeesByDepartment(department: string) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
-  return await db.select().from(employees).where(eq(employees.department, department));
+  return await db
+    .select()
+    .from(employees)
+    .where(eq(employees.department, department));
 }
 
 /**
  * Skills queries
  */
 export async function getEmployeeSkills(employeeId: number) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
-  return await db.select().from(skills).where(eq(skills.employeeId, employeeId));
+  return await db
+    .select()
+    .from(skills)
+    .where(eq(skills.employeeId, employeeId));
 }
 
 /**
  * Performance queries
  */
 export async function getEmployeePerformance(employeeId: number) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
-  return await db.select().from(performanceRatings).where(eq(performanceRatings.employeeId, employeeId));
+  return await db
+    .select()
+    .from(performanceRatings)
+    .where(eq(performanceRatings.employeeId, employeeId));
 }
 
 /**
  * Training queries
  */
 export async function getEmployeeTraining(employeeId: number) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
-  return await db.select().from(trainingRecords).where(eq(trainingRecords.employeeId, employeeId));
+  return await db
+    .select()
+    .from(trainingRecords)
+    .where(eq(trainingRecords.employeeId, employeeId));
 }
 
 /**
  * Compensation queries
  */
 export async function getEmployeeCompensation(employeeId: number, year: number) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return undefined;
   const result = await db
     .select()
     .from(compensationData)
-    .where(eq(compensationData.employeeId, employeeId) && eq(compensationData.year, year))
+    .where(
+      and(
+        eq(compensationData.employeeId, employeeId),
+        eq(compensationData.year, year)
+      )
+    )
     .limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
@@ -167,7 +188,7 @@ export async function getEmployeeCompensation(employeeId: number, year: number) 
  * Talent assessment queries
  */
 export async function getEmployeeTalentAssessment(employeeId: number) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return undefined;
   const result = await db
     .select()
@@ -178,7 +199,7 @@ export async function getEmployeeTalentAssessment(employeeId: number) {
 }
 
 export async function getTopTalents(limit: number = 10) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
   return await db
     .select()
@@ -191,7 +212,7 @@ export async function getTopTalents(limit: number = 10) {
  * Succession plan queries
  */
 export async function getSuccessionPlan(roleId: string) {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return undefined;
   const result = await db
     .select()
@@ -202,7 +223,7 @@ export async function getSuccessionPlan(roleId: string) {
 }
 
 export async function getAllSuccessionPlans() {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
   return await db.select().from(successionPlans);
 }
@@ -211,13 +232,13 @@ export async function getAllSuccessionPlans() {
  * Alert queries
  */
 export async function getUnreadAlerts() {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
   return await db.select().from(alerts).where(eq(alerts.isRead, false));
 }
 
 export async function getAllAlerts() {
-  const db = await getDb();
+  const db = getDb();
   if (!db) return [];
   return await db.select().from(alerts);
 }

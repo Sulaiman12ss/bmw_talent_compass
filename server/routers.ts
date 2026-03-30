@@ -1,22 +1,99 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { TRPCError } from "@trpc/server";
+import bcrypt from "bcryptjs";
+import { nanoid } from "nanoid";
+import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
-import { z } from "zod";
+import { sdk } from "./_core/sdk";
 import { decisionRouter } from "./decision-router";
 
 export const appRouter = router({
   system: systemRouter,
   decision: decisionRouter,
+
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
+
+    login: publicProcedure
+      .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
+      .mutation(async ({ input, ctx }) => {
+        const { getUserByEmail, upsertUser } = await import("./db");
+        const user = await getUserByEmail(input.email);
+
+        if (!user || !user.passwordHash) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password" });
+        }
+
+        const valid = await bcrypt.compare(input.password, user.passwordHash);
+        if (!valid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password" });
+        }
+
+        await upsertUser({ openId: user.openId, lastSignedIn: new Date() });
+
+        const token = await sdk.createSessionToken(user.openId, {
+          email: user.email ?? "",
+          name: user.name ?? "",
+          expiresInMs: ONE_YEAR_MS,
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+        return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+      }),
+
+    register: publicProcedure
+      .input(
+        z.object({
+          email: z.string().email(),
+          password: z.string().min(8, "Password must be at least 8 characters"),
+          name: z.string().min(1, "Name is required"),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const { getUserByEmail, upsertUser, getUserByOpenId } = await import("./db");
+
+        const existing = await getUserByEmail(input.email);
+        if (existing) {
+          throw new TRPCError({ code: "CONFLICT", message: "Email already registered" });
+        }
+
+        const passwordHash = await bcrypt.hash(input.password, 12);
+        const openId = nanoid();
+
+        await upsertUser({
+          openId,
+          email: input.email,
+          name: input.name,
+          passwordHash,
+          loginMethod: "email",
+        });
+
+        const user = await getUserByOpenId(openId);
+        if (!user) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create user" });
+        }
+
+        const token = await sdk.createSessionToken(user.openId, {
+          email: user.email ?? "",
+          name: user.name ?? "",
+          expiresInMs: ONE_YEAR_MS,
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
+        return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+      }),
   }),
 
   employees: router({
@@ -108,7 +185,6 @@ export const appRouter = router({
         const backup = plan.backupSuccessor ? await getEmployeeById(plan.backupSuccessor) : null;
 
         const candidates = [primary, backup].filter((e) => e !== null && e !== undefined);
-
         return generateSuccessionRecommendations(plan.roleName, currentHolder || null, candidates as any);
       }),
 

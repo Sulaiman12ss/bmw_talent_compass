@@ -774,7 +774,7 @@ export async function executeDecisionPipeline(
   scenario?: ScenarioContext,
   jobRequirementId?: number,
 ): Promise<DecisionPipelineResult> {
-  const db = await getDb().catch(() => null);
+  const db = getDb();
 
   // Step 1: JD Agent analyzes job requirements (derives weights from text)
   const jdOutput = await jdAgent(jobProfile);
